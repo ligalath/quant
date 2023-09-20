@@ -5,9 +5,11 @@ import backtrader as bt
 import pandas as pd
 from datetime import *
 '''
-month_data: code|datetime  | open |close | high | low  | volume/K | openinterest/% |turnover/%
+input_data: code|datetime  | open |close | high | low  | volume/K | openinterest/% |turnover/%
             0011|2022-01-01| 12.3 | 11.3 | 15.2 | 9.3  | 123.1    |  0.09          | 0.12
-stock_data:
+
+output_data: code|datetime  | open |close | high | low  | volume/K | openinterest/% |turnover/%|sailence_weight
+             0011|2022-01-01| 12.3 | 11.3 | 15.2 | 9.3  | 123.1    |  0.09          | 0.12     |0.786
 '''
 class Sailence:
     def __init__(self, month_data:pd.DataFrame):
@@ -19,6 +21,13 @@ class Sailence:
         self.sailence_factor = None
         self.sailence_twist = 0.7
         self.period = 30
+        self.code_2_sailence_weight = {}
+    #process input df dataframe with sailence strategy
+    def process(self, from_date, to_date):
+        self.preprocess()
+        self.sailence_func(from_date, to_date)
+        self.sailence_weight(from_date,to_date)
+        return self.code_2_sailence_weight
     #data preprocess before calculate sailence
     def preprocess(self):
         #insert column of daily_yield
@@ -84,7 +93,7 @@ class Sailence:
             
 
 # Create a Stratey
-class TestStrategy(bt.Strategy):
+class STRStrategy(bt.Strategy):
     params = (
         ('maperiod', 15),
     )
@@ -95,14 +104,12 @@ class TestStrategy(bt.Strategy):
         print('%s, %s' % (dt.isoformat(), txt))
 
     def __init__(self):
-        #TODO ... get history data
-        ####
+        self.period = 30 #days
+        self.days_passed = 0
+        self.held_stock = list()
         # Keep a reference to the "close" line in the data[0] dataseries
-        self.data_close = self.datas[0].close
-        self.data_open = self.datas[0].open
-        self.data_high = self.datas[0].high
-        self.data_low = self.datas[0].low
-        self.data_turnover= self.datas[0].turnover
+        self.data_sailence_weigtht = self.datas[0].sailence_weight
+        self.data_daily_yield = self.datas[0].daily_yield
 
         # To keep track of pending orders and buy price/commission
         self.order = None
@@ -151,6 +158,11 @@ class TestStrategy(bt.Strategy):
                  (trade.pnl, trade.pnlcomm))
 
     def next(self):
+        #TODO...  process max drawdown
+
+        #only executing in self.period
+        if self.days_passed % self.period != 0:
+            return
         # Simply log the closing price of the series from the reference
         self.log('Close, %.2f' % self.data_close[0])
 
@@ -159,22 +171,23 @@ class TestStrategy(bt.Strategy):
             return
 
         # Check if we are in the market
-        if not self.position:
-
-            # Not yet ... we MIGHT BUY if ...
-            if self.data_close[0] > self.sma[0]:
-
-                # BUY, BUY, BUY!!! (with all possible default parameters)
-                self.log('BUY CREATE, %.2f' % self.data_close[0])
-
-                # Keep track of the created order to avoid a 2nd order
-                self.order = self.buy()
-
-        else:
-
-            if self.data_close[0] < self.sma[0]:
-                # SELL, SELL, SELL!!! (with all possible default parameters)
-                self.log('SELL CREATE, %.2f' % self.data_close[0])
-
-                # Keep track of the created order to avoid a 2nd order
-                self.order = self.sell()
+        #calculate sailence factor
+        stock_2_sailence = dict()
+        for stock in self.datas:
+            sailence_weigth_monthly = list(stock.sailence_weigth[0:-29])
+            daily_yield_monthly = list(stock.daily_yiled[0:-29])
+            sailence_factor = sailence_factor.cov(daily_yield_monthly)
+            stock_2_sailence[stock] = sailence_factor 
+        #sort datas by sailence_factor
+        sorted_stock_2_sailence = list(sorted(stock_2_sailence.items(), key=lambda e:e[1], reverse=True))
+        #sell all held stock
+        for item in self.held_stock:
+            # SELL, SELL, SELL!!! (with all possible default parameters)
+            self.log('SELL CREATE, %.2f' % self.data_close[0])
+            # Keep track of the created order to avoid a 2nd order
+            self.order = self.sell(item)
+        #buy stock
+        for item in sorted_stock_2_sailence[0:10]:
+            self.log('BUY CREATE, %.2f' % self.data_close[0])
+            self.order = self.buy(data=item[0])
+            self.held_stock.append(item[0])

@@ -9,6 +9,8 @@ import sys  # To find out the script name (in argv[0])
 #local modules
 from DataFetch import WindDataFetch
 from Pandas2DataFeeds import STVPdData
+from STR_strategy import Sailence
+from STR_strategy import STRStrategy
 
 
 
@@ -17,22 +19,27 @@ if __name__ == '__main__':
     cerebro = bt.Cerebro()
 
     # Add a strategy
-    cerebro.addstrategy(TestStrategy)
+    cerebro.addstrategy(STRStrategy)
 
     # Fetch data
     wind_data_fetcher = WindDataFetch()
     #2 year data
     to_date = datetime.datetime.now()
-    from_date = to_date - relativedelta(year=2)
+    # from_date = to_date - relativedelta(year=2)
+    from_date = to_date - relativedelta(month=2)
     fields = ['open','close','high','low','pct_chg','turn']
-    today = datetime.today()
+    today = datetime.datetime.today()
     today_str = today.strftime('%Y-%m-%d')
+    #A股全部数据
     options = "date={today};sectorid=a001010100000000".format(today=today_str)
     codes_set = wind_data_fetcher.fetch_codes(options)
     df = wind_data_fetcher.fetch_data(codes_set, from_date, to_date, fields)
+    #process dataframe with Sailence Strategy
+    sailence_processor = Sailence(df, from_date, to_date)
+    code_2_data = sailence_processor.process(from_date, to_date)
     # Create a Data Feed
-    for code in codes_set:
-        one_stock_data = df.query("codes = {code}".format(code = code))
+    for code in code_2_data.keys():
+        one_stock_data = code_2_data[code]
         one_stock_data.sort_values(by=['datetime'], ascending=True, inplace=True)
         data = STVPdData(
             dataname = code,
