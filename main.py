@@ -33,7 +33,7 @@ if __name__ == '__main__':
     #A股全部数据
     options = "date={today};sectorid=a001010100000000".format(today=today_str)
     codes_set = wind_data_fetcher.fetch_codes(options)
-    df = wind_data_fetcher.fetch_data(codes_set, from_date, to_date, fields)
+    code_2_df = wind_data_fetcher.fetch_data(codes_set, from_date, to_date, fields)
     #process dataframe with Sailence Strategy
     sailence_processor = Sailence(df, from_date, to_date)
     code_2_data = sailence_processor.process(from_date, to_date)

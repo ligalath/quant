@@ -5,59 +5,54 @@ import backtrader as bt
 import pandas as pd
 from datetime import *
 '''
-input_data: code|datetime  | open |close | high | low  | volume/K | openinterest/% |turnover/%
-            0011|2022-01-01| 12.3 | 11.3 | 15.2 | 9.3  | 123.1    |  0.09          | 0.12
+input_data: code|datetime  | open |close | high | low   | pct_chg        |turn/%
+            0011|2022-01-01| 12.3 | 11.3 | 15.2 | 9.3   |  0.09          | 0.12
 
-output_data: code|datetime  | open |close | high | low  | volume/K | openinterest/% |turnover/%|sailence_weight
-             0011|2022-01-01| 12.3 | 11.3 | 15.2 | 9.3  | 123.1    |  0.09          | 0.12     |0.786
+output_data: code|datetime  | open |close | high | low  | openinterest/% |turnover/%|sailence_weight
+             0011|2022-01-01| 12.3 | 11.3 | 15.2 | 9.3  |  0.09          | 0.12     |0.786
 '''
 class Sailence:
-    def __init__(self, month_data:pd.DataFrame):
-        self.month_data = month_data
-        self.month_data["sailence"] = 0
-        self.month_data["sailence_weight"] = 0
+    def __init__(self, history_data:pd.DataFrame):
+        self.history_data = history_data
+        self.history_data["sailence"] = 0
+        self.history_data["sailence_weight"] = 0
         self.sailence_weight = dict()
-        #sailence: {"code1" : sailence, "code2":sailence2...}
         self.sailence_factor = None
         self.sailence_twist = 0.7
         self.period = 30
         self.code_2_sailence_weight = {}
     #process input df dataframe with sailence strategy
     def process(self, from_date, to_date):
-        self.preprocess()
-        self.sailence_func(from_date, to_date)
-        self.sailence_weight(from_date,to_date)
+        self.calculate_sailence(from_date, to_date)
+        self.calculate_sailence_weight(from_date,to_date)
         return self.code_2_sailence_weight
     #data preprocess before calculate sailence
     def preprocess(self):
         #insert column of daily_yield
-        self.month_data.insert(self.month_data.shape[1], "daily_yield", 0)
+        self.history_data.insert(self.history_data.shape[1], "daily_yield", 0)
         #calculate daily yield
-        for i in len(self.month_data):
-            data_entry = self.month_data.iloc[i]
+        for i in len(self.history_data):
+            data_entry = self.history_data.iloc[i]
             open = data_entry["open"]
             close = data_entry["close"]
             data_entry["daily_yield"] = (close - open)/open
-    def sailence_func(self, from_date:datetime, to_date:datetime):
+    def calculate_sailence(self, from_date:datetime, to_date:datetime):
         #sort dateframe by datetime in descending
-        self.month_data.sort_values(by = ["datetime"], ascending=False, inplace=True)
+        self.history_data.sort_values(by = ["datetime"], ascending=False, inplace=True)
         #monthly process 
         entry_offset = 0
-        while(True):
-            tmp = datetime.strptime(self.month_data.iloc[entry_pos]["datetime"], "%y-%m-%d")
+        while(self.history_data.shape[0] >= entry_offset + 1):
+            tmp = datetime.strptime(self.history_data.iloc[entry_offset]["datetime"], "%y-%m-%d")
             if(tmp == to_date):
                 break
             entry_offset += 1
-        entry_pos = entry_offset + 0
-        to_date = datetime.strptime(self.month_data.iloc[entry_pos]["datetime"], "%y-%m-%d")
-        from_date = to_date - timedelta(days=self.period)
-        process_date = to_date
-        while(self.month_data.shape[0] > entry_pos):
-            data_entry = self.month_data.iloc[entry_pos]
+        entry_pos = 0
+        while(self.history_data.shape[0] > entry_pos):
+            data_entry = self.history_data.iloc[entry_pos]
+            entry_pos += 1
             process_date = datetime.strptime(data_entry["datetime"], "%y-%m-%d")
             if(process_date < from_date):
-                break
-            entry_pos += 1
+               continue 
             sailence = 0
             rate = (data_entry["close"] - data_entry["open"])/data_entry["open"]
             if rate  > 0.098:
@@ -65,10 +60,11 @@ class Sailence:
             else:
                 sailence = data_entry["turnover"]
             data_entry["sailence"] = sailence
-    def sailence_weight(self, from_date:datetime, to_date:datetime):
-        period_df = self.month_data.query("datetime <= \"{to_date}\" and datetime >= \"{from_date}\"".format(to_date=to_date, from_date=from_date))
-        stock_codes_set = list(self.month_data["codes"].unique())
-        for code in stock_codes_set:
+    def calculate_sailence_weight(self, from_date:datetime, to_date:datetime):
+        period_df = self.history_data.query("datetime <= \"{to_date}\" and datetime >= \"{from_date}\"".format(to_date=to_date, from_date=from_date))
+        period_df.sort_values(by = ["datetime"], ascending=False, inplace=True)
+        entry_pos = 0
+        while period_df.shape[0] > entry_pos:
             stock_monthly_cross = period_df.query("code == {code}".format(code = code))
             #sort sailence by value:最凸显---》最不凸显
             stock_monthly_cross.sort_values(by = ["sailence"], ascending=False, inplace=True)
