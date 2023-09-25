@@ -4,6 +4,10 @@
 import backtrader as bt
 import pandas as pd
 from datetime import *
+
+
+PERIOD = 30
+
 '''
 input_data: code|datetime  | open |close | high | low   | pct_chg        |turn/%
             0011|2022-01-01| 12.3 | 11.3 | 15.2 | 9.3   |  0.09          | 0.12
@@ -19,7 +23,7 @@ class Sailence:
         self.sailence_weight = dict()
         self.sailence_factor = None
         self.sailence_twist = 0.7
-        self.period = 30
+        self.period = PERIOD
         self.code_2_sailence_weight = {}
     #process input df dataframe with sailence strategy
     def process(self, from_date, to_date):
@@ -61,22 +65,24 @@ class Sailence:
                 sailence = data_entry["turnover"]
             data_entry["sailence"] = sailence
     def calculate_sailence_weight(self, from_date:datetime, to_date:datetime):
-        period_df = self.history_data.query("datetime <= \"{to_date}\" and datetime >= \"{from_date}\"".format(to_date=to_date, from_date=from_date))
+        period_df = self.history_data.query("datetime <= \"{to_date}\" and datetime >= \"{from_date}\"".format(to_date=to_date, from_date=from_date),inplace=True)
         period_df.sort_values(by = ["datetime"], ascending=False, inplace=True)
         entry_pos = 0
         while period_df.shape[0] > entry_pos:
-            stock_monthly_cross = period_df.query("code == {code}".format(code = code))
+            #左闭右开
+            stock_monthly_cross = period_df.iloc[entry_pos: entry_pos+self.period]
+            entry_pos += self.period
             #sort sailence by value:最凸显---》最不凸显
             stock_monthly_cross.sort_values(by = ["sailence"], ascending=False, inplace=True)
-            period = len(stock_monthly_cross)
             sum = 0
             for i in len(stock_monthly_cross):
                 sum += self.sailence_twist^i
             for i in len(stock_monthly_cross):
-                stock_monthly_cross.iloc[i]["sailence_weight"] = self.sailence_twist^i/sum * period
-            self.code_2_sailence_weight[code] = stock_monthly_cross
-            
-    def sailence_factor(self):
+                datetime_str = stock_monthly_cross[i]["datetime"]
+                period_df[period_df["datetime"]==datetime_str,"sailence_weigth"] = self.sailence_twist^i/sum * self.period
+                # stock_monthly_cross.iloc[i]["sailence_weight"] = self.sailence_twist^i/sum * self.period
+                
+    def sailence_factor(self, data:pd.DataFrame):
          for code in self.code_2_sailence_weight.keys():
             stock_monthly_cross = self.code_2_sailence_weight[code]
             self.code_2_sailence_factor[code] = stock_monthly_cross["sailence_weight"].cov(stock_monthly_cross["daily_yield"])
@@ -170,20 +176,20 @@ class STRStrategy(bt.Strategy):
         #calculate sailence factor
         stock_2_sailence = dict()
         for stock in self.datas:
-            sailence_weigth_monthly = list(stock.sailence_weigth[0:-29])
-            daily_yield_monthly = list(stock.daily_yiled[0:-29])
+            sailence_weigth_monthly = list(stock.sailence_weight.get(size = PERIOD))
+            daily_yield_monthly = list(stock.pct_chg.get(size = PERIOD))
             sailence_factor = sailence_factor.cov(daily_yield_monthly)
             stock_2_sailence[stock] = sailence_factor 
-        #sort datas by sailence_factor
+        #sort datas by sailence_factor in ascending
         sorted_stock_2_sailence = list(sorted(stock_2_sailence.items(), key=lambda e:e[1], reverse=True))
         #sell all held stock
         for item in self.held_stock:
             # SELL, SELL, SELL!!! (with all possible default parameters)
             self.log('SELL CREATE, %.2f' % self.data_close[0])
             # Keep track of the created order to avoid a 2nd order
-            self.order = self.sell(item)
+            self.order = self.close(item)
         #buy stock
         for item in sorted_stock_2_sailence[0:10]:
             self.log('BUY CREATE, %.2f' % self.data_close[0])
-            self.order = self.buy(data=item[0])
+            self.order = self.buy(data=item[0], size=100)
             self.held_stock.append(item[0])
