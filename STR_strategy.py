@@ -9,11 +9,11 @@ from datetime import *
 PERIOD = 30
 
 '''
-input_data: code|datetime  | open |close | high | low   | pct_chg        |turn/%
-            0011|2022-01-01| 12.3 | 11.3 | 15.2 | 9.3   |  0.09          | 0.12
+input_data: datetime  | open |close | high | low   | pct_chg        |turn/%
+            2022-01-01| 12.3 | 11.3 | 15.2 | 9.3   |  0.09          | 0.12
 
-output_data: code|datetime  | open |close | high | low  | openinterest/% |turnover/%|sailence_weight
-             0011|2022-01-01| 12.3 | 11.3 | 15.2 | 9.3  |  0.09          | 0.12     |0.786
+output_data: datetime  | open |close | high | low  | pct_chg/%      |turn/%    |sailence_weight
+             2022-01-01| 12.3 | 11.3 | 15.2 | 9.3  |  0.09          | 0.12     |0.786
 '''
 class Sailence:
     def __init__(self, history_data:pd.DataFrame):
@@ -62,7 +62,7 @@ class Sailence:
             if rate  > 0.098:
                 sailence = rate* 100 * self.period
             else:
-                sailence = data_entry["turnover"]
+                sailence = data_entry["turn"]
             data_entry["sailence"] = sailence
     def calculate_sailence_weight(self, from_date:datetime, to_date:datetime):
         period_df = self.history_data.query("datetime <= \"{to_date}\" and datetime >= \"{from_date}\"".format(to_date=to_date, from_date=from_date),inplace=True)

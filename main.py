@@ -34,21 +34,20 @@ if __name__ == '__main__':
     options = "date={today};sectorid=a001010100000000".format(today=today_str)
     codes_set = wind_data_fetcher.fetch_codes(options)
     code_2_df = wind_data_fetcher.fetch_data(codes_set, from_date, to_date, fields)
-    #process dataframe with Sailence Strategy
-    sailence_processor = Sailence(df, from_date, to_date)
-    code_2_data = sailence_processor.process(from_date, to_date)
     # Create a Data Feed
-    for code in code_2_data.keys():
-        one_stock_data = code_2_data[code]
+    for code in code_2_df.keys():
+        #process dataframe with Sailence Strategy
+        sailence_processor = Sailence(code_2_df[code], from_date, to_date)
+        one_stock_data = sailence_processor.process(from_date, to_date)
         one_stock_data.sort_values(by=['datetime'], ascending=True, inplace=True)
         data = STVPdData(
-            dataname = code,
+            dataname = one_stock_data,
             fromdate = from_date,
             todate = to_date,
-            reverse=False
+            reverse=False,
         )
         # Add the Data Feed to Cerebro
-        cerebro.adddata(data)
+        cerebro.adddata(dataname=data, name=code)
 
     # Set our desired cash start
     cerebro.broker.setcash(100000.0)
